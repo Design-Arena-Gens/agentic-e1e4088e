@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  SHOP_OWNER
+  ADMIN
+}
+
+enum MembershipStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  CLOSED
+}
+
+enum ProductCategory {
+  GOLD_NECKLACE
+  GOLD_RING
+  GOLD_EARRING
+  GOLD_BRACELET
+  GOLD_CHAIN
+  SILVER_NECKLACE
+  SILVER_RING
+  SILVER_EARRING
+  SILVER_BRACELET
+  DIAMOND_RING
+  DIAMOND_NECKLACE
+  DIAMOND_EARRING
+  DIAMOND_PENDANT
+  GEMSTONE_RING
+  GEMSTONE_NECKLACE
+  BANGLES
+  ANKLETS
+  NOSE_PIN
+  MANGALSUTRA
+  OTHER
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String?        @unique
+  phone         String         @unique
+  passwordHash  String?
+  role          UserRole       @default(CUSTOMER)
+  emailVerified Boolean        @default(false)
+  phoneVerified Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  shops         Shop[]
+  transactions  Transaction[]
+  wishlists     Wishlist[]
+  reviews       Review[]
+  leads         Lead[]
+  auditLogs     AuditLog[]
+  otpCodes      OtpCode[]
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String?
+  phone     String
+  email     String?
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, code])
+  @@index([email, code])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  
+  cities    City[]
+
+  @@index([slug])
+}
+
+model City {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  stateId   String
+  district  String?
+  taluka    String?
+  seoMeta   Json?
+  createdAt DateTime @default(now())
+  
+  state     State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  shops     Shop[]
+
+  @@index([slug])
+  @@index([stateId])
+}
+
+model Shop {
+  id                    String            @id @default(uuid())
+  ownerId               String
+  name                  String
+  cityId                String
+  address               String
+  phone                 String
+  whatsapp              String
+  logoUrl               String?
+  bannerUrl             String?
+  description           String?
+  membershipStatus      MembershipStatus  @default(PENDING)
+  membershipStartedAt   DateTime?
+  membershipExpiresAt   DateTime?
+  verified              Boolean           @default(false)
+  lat                   Float?
+  lng                   Float?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  owner                 User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  city                  City              @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  products              Product[]
+  memberships           Membership[]
+  transactions          Transaction[]
+  leads                 Lead[]
+  reviews               Review[]
+
+  @@index([ownerId])
+  @@index([cityId])
+  @@index([membershipStatus])
+  @@index([verified])
+}
+
+model Product {
+  id            String          @id @default(uuid())
+  shopId        String
+  name          String
+  sku           String          @unique
+  description   String?
+  priceInPaise  Int
+  currency      String          @default("INR")
+  purity        String?
+  weight        Float?
+  images        String[]
+  arModelUrl    String?
+  category      ProductCategory
+  tags          String[]
+  featured      Boolean         @default(false)
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  shop          Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  wishlists     Wishlist[]
+  reviews       Review[]
+  leads         Lead[]
+
+  @@index([shopId])
+  @@index([category])
+  @@index([featured])
+  @@index([active])
+  @@index([sku])
+}
+
+model Membership {
+  id              String            @id @default(uuid())
+  shopId          String
+  plan            String
+  amountInPaise   Int
+  currency        String            @default("INR")
+  startedAt       DateTime
+  expiresAt       DateTime
+  status          MembershipStatus
+  transactionRef  String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  shop            Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@index([status])
+}
+
+model Transaction {
+  id                String            @id @default(uuid())
+  userId            String?
+  shopId            String?
+  amountInPaise     Int
+  currency          String            @default("INR")
+  provider          String            @default("razorpay")
+  providerPaymentId String?           @unique
+  providerOrderId   String?
+  status            TransactionStatus @default(PENDING)
+  payload           Json?
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  user              User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shop              Shop?             @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([shopId])
+  @@index([status])
+  @@index([providerPaymentId])
+  @@index([providerOrderId])
+}
+
+model Lead {
+  id          String     @id @default(uuid())
+  productId   String
+  shopId      String
+  userId      String?
+  name        String
+  phone       String
+  email       String?
+  message     String?
+  status      LeadStatus @default(NEW)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shop        Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([shopId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String?
+  shopId    String?
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shop      Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([shopId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
